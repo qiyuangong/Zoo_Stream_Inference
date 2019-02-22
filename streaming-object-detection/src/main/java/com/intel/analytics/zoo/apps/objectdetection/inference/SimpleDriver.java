@@ -1,4 +1,4 @@
-package com.intel.analytics.zoo.apps.textclassfication.inference;
+package com.intel.analytics.zoo.apps.objectdetection.inference;
 
 import com.intel.analytics.zoo.pipeline.inference.JTensor;
 
