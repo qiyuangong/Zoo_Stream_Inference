@@ -1,10 +1,8 @@
-package com.intel.analytics.zoo.apps.objectdetection.inference;
+package com.intel.analytics.zoo.apps.streaming.textclassification;
 
 import com.intel.analytics.zoo.pipeline.inference.JTensor;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 public class SimpleDriver {

@@ -12,6 +12,12 @@
     <name>zoo streaming inference</name>
     <description>simple spark streaming inference examples based on zoo</description>
 
+
+    <modules>
+        <module>streaming-object-detection</module>
+        <module>streaming-text-classification</module>
+    </modules>
+
     <repositories>
         <repository>
             <id>ossrh</id>
