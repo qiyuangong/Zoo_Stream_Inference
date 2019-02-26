@@ -2,6 +2,7 @@ package com.intel.analytics.zoo.apps.streaming
 
 import java.nio.file.Paths
 
+import com.intel.analytics.bigdl.transform.vision.image.ImageFeature
 import com.intel.analytics.zoo.common.{NNContext, Utils}
 import com.intel.analytics.zoo.feature.image.ImageSet
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
@@ -11,7 +12,7 @@ import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.opencv.imgcodecs.Imgcodecs
 import scopt.OptionParser
 
-object StreamingPredict {
+object StreamingObjectDetection {
   Logger.getLogger("org").setLevel(Level.ERROR)
   Logger.getLogger("akka").setLevel(Level.ERROR)
   Logger.getLogger("breeze").setLevel(Level.ERROR)
@@ -45,34 +46,37 @@ object StreamingPredict {
 
   def main(args: Array[String]): Unit = {
     parser.parse(args, PredictParam()).foreach { params =>
-      val conf = new SparkConf()
-        .setAppName("Streaming Object Detection Example")
-      val sc = NNContext.initNNContext(conf)
-      val ssc = new StreamingContext(conf, Seconds(1))
+      val sc = NNContext.initNNContext("Streaming Object Detection")
+
+      val ssc = new StreamingContext(sc.getConf, Seconds(3))
       val model = ObjectDetector.loadModel[Float](params.modelPath)
-      val data = ImageSet.read(params.image, sc, params.nPartition,
-        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+      // Read image stream from HDFS
+      val fStream = ssc.fileStream()
+//      val data = ImageSet.read(params.image, sc, params.nPartition,
+//        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
 
-      val output = model.predictImageSet(data)
-      data.toDistributed()
-      val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
-      val visualized = visualizer(output).toDistributed()
-      val result = visualized.rdd.map(imageFeature =>
-        (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
-
-      result.foreach(x => {
-        Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
+      fStream.foreachRDD(imgRdd => {
+        // RDD to TextFeature
+        val imgFeature = imgRdd.map(x => ImageFeature.apply(x))
+        // RDD[TextFeature] to TextSet
+        val dataSet = ImageSet.rdd(imgFeature)
+        // Predict
+        val output = model.predictImageSet(dataSet)
+        // Print result
+        val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
+        val visualized = visualizer(output).toDistributed()
+        val result = visualized.rdd.map(imageFeature =>
+          (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
+        result.foreach(x => {
+          Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
+        })
+        logger.info(s"labeled images are saved to ${params.outputFolder}")
       })
-      logger.info(s"labeled images are saved to ${params.outputFolder}")
 
-      val lines = ssc.socketTextStream(args(0), args(1).toInt, StorageLevel.MEMORY_AND_DISK_SER)
-      val words = lines.flatMap(_.split(" "))
-      val wordCounts = words.map(x => (x, 1)).reduceByKey(_ + _)
 
-      wordCounts.print()
 
-      ssc.start()
-      ssc.awaitTermination()
+
+
     }
   }
 
