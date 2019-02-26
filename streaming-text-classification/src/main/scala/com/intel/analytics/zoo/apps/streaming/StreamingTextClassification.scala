@@ -3,6 +3,7 @@ package com.intel.analytics.zoo.apps.streaming
 import com.intel.analytics.zoo.common.NNContext
 import com.intel.analytics.zoo.feature.text.{TextFeature, TextSet}
 import com.intel.analytics.zoo.models.textclassification.TextClassifier
+import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import scopt.OptionParser
