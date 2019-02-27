@@ -52,15 +52,15 @@ object StreamingObjectDetection {
       val model = ObjectDetector.loadModel[Float](params.modelPath)
       // Read image stream from HDFS
 
-      val fStream = ssc.fileStream(params.image)
+//      val fStream = ssc.fileStream(params.image)
 //      val data = ImageSet.read(params.image, sc, params.nPartition,
 //        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
 
-//      val fStream = ssc.socketTextStream("localhost", 7777, StorageLevel.MEMORY_AND_DISK_SER)
+      val fStream = ssc.socketTextStream("localhost", 7777, StorageLevel.MEMORY_AND_DISK_SER)
 
       fStream.foreachRDD(imgRdd => {
         // RDD to TextFeature
-        val imgFeature = imgRdd.map(x => ImageFeature.apply(x.getBytes()))
+        val imgFeature = imgRdd.map(x => ImageFeature.apply(x.getBytes))
         // RDD[TextFeature] to TextSet
         val dataSet = ImageSet.rdd(imgFeature)
         // Predict
