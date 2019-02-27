@@ -46,8 +46,8 @@ object StreamingObjectDetection {
 
   def main(args: Array[String]): Unit = {
     parser.parse(args, PredictParam()).foreach { params =>
-      val conf = new SparkConf().setAppName("Streaming Object Detection")
-      val ssc = new StreamingContext(conf, Seconds(3))
+      val sc = NNContext.initNNContext("Streaming Object Detection")
+      val ssc = new StreamingContext(sc, Seconds(3))
 
       val model = ObjectDetector.loadModel[Float](params.modelPath)
       // Read image stream from HDFS
