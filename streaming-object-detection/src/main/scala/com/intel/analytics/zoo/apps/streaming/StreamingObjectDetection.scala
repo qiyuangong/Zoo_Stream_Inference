@@ -7,6 +7,8 @@ import com.intel.analytics.zoo.common.{NNContext, Utils}
 import com.intel.analytics.zoo.feature.image.ImageSet
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.SparkConf
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import scopt.OptionParser
 
@@ -44,18 +46,21 @@ object StreamingObjectDetection {
 
   def main(args: Array[String]): Unit = {
     parser.parse(args, PredictParam()).foreach { params =>
-      val sc = NNContext.initNNContext("Streaming Object Detection")
+      val conf = new SparkConf().setAppName("Streaming Object Detection")
+      val ssc = new StreamingContext(conf, Seconds(3))
 
-      val ssc = new StreamingContext(sc.getConf, Seconds(3))
       val model = ObjectDetector.loadModel[Float](params.modelPath)
       // Read image stream from HDFS
-      val fStream = ssc.fileStream()
+
+      val fStream = ssc.fileStream(params.image)
 //      val data = ImageSet.read(params.image, sc, params.nPartition,
 //        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
 
+//      val fStream = ssc.socketTextStream("localhost", 7777, StorageLevel.MEMORY_AND_DISK_SER)
+
       fStream.foreachRDD(imgRdd => {
         // RDD to TextFeature
-        val imgFeature = imgRdd.map(x => ImageFeature.apply(x))
+        val imgFeature = imgRdd.map(x => ImageFeature.apply(x.getBytes()))
         // RDD[TextFeature] to TextSet
         val dataSet = ImageSet.rdd(imgFeature)
         // Predict
