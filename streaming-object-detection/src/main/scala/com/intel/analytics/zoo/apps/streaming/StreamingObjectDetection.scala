@@ -8,6 +8,7 @@ import com.intel.analytics.zoo.feature.image.ImageSet
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.opencv.imgcodecs.Imgcodecs
 import scopt.OptionParser
 
 object StreamingObjectDetection {
@@ -18,7 +19,7 @@ object StreamingObjectDetection {
 
   val logger = Logger.getLogger(getClass)
 
-  case class PredictParam(image: String = "",
+  case class PredictParam(image: String = "file:///tmp/zoo/streaming",
                           outputFolder: String = "data/demo",
                           modelPath: String = "",
                           nPartition: Int = 1)
@@ -45,7 +46,7 @@ object StreamingObjectDetection {
   def main(args: Array[String]): Unit = {
     parser.parse(args, PredictParam()).foreach { params =>
       val sc = NNContext.initNNContext("Streaming Object Detection")
-      val ssc = new StreamingContext(sc, Seconds(3))
+      val ssc = new StreamingContext(sc, Seconds(10))
 
       // Load pre-trained model
       val model = ObjectDetector.loadModel[Float](params.modelPath)
@@ -60,25 +61,23 @@ object StreamingObjectDetection {
       // New dstream after filter
       val pathes = lines.flatMap(_.split(" "))
 
-      pathes.foreachRDD(path => {
+      pathes.foreachRDD(batchPath => {
         // Read image files and load to RDD
-        val imgFeature = path.map(x => ImageFeature.apply())
-        // RDD[TextFeature] to TextSet
-        val dataSet = ImageSet.rdd(imgFeature)
-        // Predict
-        val output = model.predictImageSet(dataSet)
-        model.predictImage()
-        // Print result
-        val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
-        val visualized = visualizer(output).toDistributed()
-        val result = visualized.rdd.map(imageFeature =>
-          (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
-        result.foreach(x => {
-          Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
+        batchPath.foreach(path => {
+          val data = ImageSet.read(path, sc, params.nPartition,
+            imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+          val output = model.predictImageSet(data)
+          // Print result
+          val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
+          val visualized = visualizer(output).toDistributed()
+          val result = visualized.rdd.map(imageFeature =>
+            (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
+          result.foreach(x => {
+            Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
+          })
         })
-        logger.info(s"labeled images are saved to ${params.outputFolder}")
       })
-
+      logger.info(s"labeled images are saved to ${params.outputFolder}")
     }
   }
 
