@@ -43,7 +43,7 @@ object StreamingObjectDetection {
   def main(args: Array[String]): Unit = {
     parser.parse(args, PredictParam()).foreach { params =>
       val sc = NNContext.initNNContext("Streaming Object Detection")
-      val ssc = new StreamingContext(sc, Seconds(10))
+      val ssc = new StreamingContext(sc, Seconds(2))
 
       // Load pre-trained model
       val model = ObjectDetector.loadModel[Float](params.modelPath)
@@ -54,25 +54,27 @@ object StreamingObjectDetection {
 //        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
 
       val lines = ssc.textFileStream(params.image)
-      // New dstream after filter
-      val pathes = lines.flatMap(_.split(" "))
-
-      pathes.foreachRDD(batchPath => {
-        // Read image files and load to RDD
-        batchPath.foreach(path => {
-          val data = ImageSet.read(path, sc, params.nPartition,
-            imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
-          val output = model.predictImageSet(data)
-          // Print result
-          val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
-          val visualized = visualizer(output).toDistributed()
-          val result = visualized.rdd.map(imageFeature =>
-            (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
-          result.foreach(x => {
-            Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
+      lines.foreachRDD(batchPath => {
+        if(!batchPath.partitions.isEmpty) {
+          lines.print()
+          // Read image files and load to RDD
+          batchPath.foreach(path => {
+            val data = ImageSet.read(path, sc, params.nPartition,
+              imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+            val output = model.predictImageSet(data)
+            // Print result
+            val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
+            val visualized = visualizer(output).toDistributed()
+            val result = visualized.rdd.map(imageFeature =>
+              (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
+            result.foreach(x => {
+              Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
+            })
           })
-        })
+        }
       })
+      ssc.start()
+      ssc.awaitTermination()
       logger.info(s"labeled images are saved to ${params.outputFolder}")
     }
   }

@@ -17,7 +17,7 @@ object ImagePathWriter {
 
     parser.parse(args, PathWriterParam()).foreach { params =>
       val lists = new File(params.imageSourcePath).listFiles().map(_.getAbsolutePath)
-      lists.grouped(2).zipWithIndex.foreach { case (batch, id) =>
+      lists.grouped(10).zipWithIndex.foreach { case (batch, id) =>
         val batchPath = new Path(params.streamingPath, id + ".txt").toString
         val pw = new PrintWriter(batchPath)
         batch.foreach(line => pw.println(line))

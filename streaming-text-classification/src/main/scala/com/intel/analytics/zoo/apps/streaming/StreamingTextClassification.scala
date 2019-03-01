@@ -59,7 +59,7 @@ object StreamingTextClassification {
 
     parser.parse(args, TextClassificationParams()).map { param =>
       val sc = NNContext.initNNContext("Network Text Streaming Predict")
-      val ssc = new StreamingContext(sc, Seconds(10))
+      val ssc = new StreamingContext(sc, Seconds(3))
 
       val model = TextClassifier.loadModel[Float](param.model.get)
       // Create a socket stream on target ip:port and count the
