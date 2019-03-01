@@ -2,7 +2,6 @@ package com.intel.analytics.zoo.apps.streaming
 
 import java.nio.file.Paths
 
-import com.intel.analytics.bigdl.transform.vision.image.ImageFeature
 import com.intel.analytics.zoo.common.{NNContext, Utils}
 import com.intel.analytics.zoo.feature.image.ImageSet
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
@@ -29,7 +28,6 @@ object StreamingObjectDetection {
     opt[String]('i', "image")
       .text("where you put the demo image data, can be image folder or image path")
       .action((x, c) => c.copy(image = x))
-      .required()
     opt[String]('o', "output")
       .text("where you put the output data")
       .action((x, c) => c.copy(outputFolder = x))
@@ -40,7 +38,6 @@ object StreamingObjectDetection {
     opt[Int]('p', "partition")
       .text("number of partitions")
       .action((x, c) => c.copy(nPartition = x))
-      .required()
   }
 
   def main(args: Array[String]): Unit = {
@@ -55,7 +52,6 @@ object StreamingObjectDetection {
 //      val fStream = ssc.fileStream(params.image)
 //      val data = ImageSet.read(params.image, sc, params.nPartition,
 //        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
-
 
       val lines = ssc.textFileStream(params.image)
       // New dstream after filter
