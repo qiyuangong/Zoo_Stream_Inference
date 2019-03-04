@@ -4,8 +4,11 @@ import java.nio.file.Paths
 
 import com.intel.analytics.zoo.common.{NNContext, Utils}
 import com.intel.analytics.zoo.feature.image.ImageSet
+import com.intel.analytics.zoo.models.image.common.ImageModel
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.opencv.imgcodecs.Imgcodecs
 import scopt.OptionParser
@@ -63,18 +66,7 @@ object StreamingObjectDetection {
           println(batchPath.top(1).apply(0))
           batchPath.foreach { path =>
             println("image path " + path)
-            // TODO Task not serializable
-            val data = ImageSet.read(path, sc, params.nPartition,
-              imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
-            val output = model.predictImageSet(data)
-            // Print result
-            val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
-            val visualized = visualizer(output).toDistributed()
-            val result = visualized.rdd.map(imageFeature =>
-              (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
-            result.foreach(x => {
-              Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
-            })
+            predictImg(path, model)
           }
         }
       }
@@ -82,6 +74,27 @@ object StreamingObjectDetection {
       ssc.awaitTermination()
       logger.info(s"labeled images are saved to ${params.outputFolder}")
     }
+  }
+
+  def predictImg(path: String, model: ObjectDetector[Float]): Unit = {
+    // TODO Task not serializable
+    val data = ImageSet.read(path, null, 1,
+    imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+    val output = model.predictImageSet(data)
+    // Print result
+    val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
+//    val visualized = visualizer(output).toDistributed()
+//    val result = visualized.rdd.map(imageFeature =>
+//    (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
+//    result.foreach(x => {
+//      Utils.saveBytes(x._2, getOutPath("output", x._1, "jpg"), true)
+//    })
+    val visualized = visualizer(output).toLocal()
+    val result = visualized.array
+      result.foreach(x => {
+        Utils.saveBytes(x[Array[Byte]](Visualizer.visualized),
+          getOutPath("output", x.uri(), "jpg"), true)
+      })
   }
 
   private def getOutPath(outPath: String, uri: String, encoding: String): String = {

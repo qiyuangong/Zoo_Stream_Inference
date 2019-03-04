@@ -57,6 +57,8 @@ object StreamingTextClassification {
         .action((x, c) => c.copy(model = Some(x)))
     }
 
+
+
     parser.parse(args, TextClassificationParams()).map { param =>
       val sc = NNContext.initNNContext("Network Text Streaming Predict")
       val ssc = new StreamingContext(sc, Seconds(3))
