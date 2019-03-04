@@ -68,9 +68,10 @@ object StreamingTextClassification {
       // Replication necessary in distributed scenario for fault tolerance.
       val lines = ssc.socketTextStream("localhost", 9999, StorageLevel.MEMORY_AND_DISK_SER)
 
-      lines.foreachRDD(lineRdd => {
+      lines.foreachRDD { lineRdd =>
         if(!lineRdd.partitions.isEmpty) {
           // RDD to TextFeature
+          println("First line " + lineRdd.top(1).apply(0))
           val textFeature = lineRdd.map(x => {
             val feature = TextFeature.apply(x)
             val tensor = Tensor(500).zero()
@@ -84,7 +85,7 @@ object StreamingTextClassification {
           // Print result
           predictSet.toDistributed().rdd.take(5).map(_.getPredict.toTensor).foreach(println)
         }
-      })
+      }
       ssc.start()
       ssc.awaitTermination()
     }

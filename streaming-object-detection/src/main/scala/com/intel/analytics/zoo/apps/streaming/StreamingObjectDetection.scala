@@ -54,11 +54,16 @@ object StreamingObjectDetection {
 //        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
 
       val lines = ssc.textFileStream(params.image)
-      lines.foreachRDD(batchPath => {
-        if(!batchPath.partitions.isEmpty) {
-          lines.print()
-          // Read image files and load to RDD
-          batchPath.foreach(path => {
+      println(lines.toString)
+      lines.foreachRDD { batchPath =>
+        // Read image files and load to RDD
+        println("batchPath partition " + batchPath.getNumPartitions)
+        println("batchPath count " + batchPath.count())
+        if (!batchPath.isEmpty()) {
+          println(batchPath.top(1).apply(0))
+          batchPath.foreach { path =>
+            println("image path " + path)
+            // TODO Task not serializable
             val data = ImageSet.read(path, sc, params.nPartition,
               imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
             val output = model.predictImageSet(data)
@@ -70,9 +75,9 @@ object StreamingObjectDetection {
             result.foreach(x => {
               Utils.saveBytes(x._2, getOutPath(params.outputFolder, x._1, "jpg"), true)
             })
-          })
+          }
         }
-      })
+      }
       ssc.start()
       ssc.awaitTermination()
       logger.info(s"labeled images are saved to ${params.outputFolder}")
