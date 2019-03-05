@@ -4,11 +4,8 @@ import java.nio.file.Paths
 
 import com.intel.analytics.zoo.common.{NNContext, Utils}
 import com.intel.analytics.zoo.feature.image.ImageSet
-import com.intel.analytics.zoo.models.image.common.ImageModel
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.opencv.imgcodecs.Imgcodecs
 import scopt.OptionParser
