@@ -1,7 +1,6 @@
 package com.intel.analytics.zoo.apps.streaming
 
-import com.intel.analytics.bigdl.dataset.Sample
-import com.intel.analytics.bigdl.tensor.Tensor
+import scala.collection.immutable._
 import scala.io.Source
 import com.intel.analytics.zoo.common.NNContext
 import com.intel.analytics.zoo.feature.text.{TextFeature, TextSet}
@@ -108,11 +107,9 @@ object StreamingTextClassification {
   }
 
   def readWordIndex(path: String): Map[String, Int] = {
-    val resMap = collection.immutable.Map[String, Int]
-    for (line <- Source.fromFile(path).getLines) {
-      val token = line.split(" ")
-      resMap(token(0)) = token(1).toInt
-    }
-    resMap
+    Source.fromFile(path).getLines.map { x =>
+      val token = x.split(" ")
+      (token(0), token(1).toInt)
+    }.toMap
   }
 }
