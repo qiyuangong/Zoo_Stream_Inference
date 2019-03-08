@@ -4,6 +4,7 @@ import com.intel.analytics.bigdl.tensor.Tensor
 
 import scala.collection.immutable._
 import scala.io.Source
+import org.apache.spark.sql.functions._
 import com.intel.analytics.zoo.common.NNContext
 import com.intel.analytics.zoo.feature.text.{TextFeature, TextSet}
 import com.intel.analytics.zoo.models.textclassification.TextClassifier
@@ -76,20 +77,31 @@ object StructuredStreamingTextClassification {
         .option("port", param.port)
         .load()
 
-      val predicts = lines.as[String].map { x =>
+      // Predict UDF
+      val predictTextUDF = udf ( (x: String) => {
         val dataSet = TextSet.array(Array(TextFeature.apply(x)))
         // Pre-processing
-        val transformed = dataSet.setWordIndex(wordIndex).tokenize().normalize()
+        val transformed = dataSet.setWordIndex(wordIndex)
+          .tokenize()
+          .normalize()
           .word2idx(removeTopN = 10, maxWordsNum = param.maxWordsNum)
           .shapeSequence(param.sequenceLength).generateSample()
         // Predict
-        val predictSet = model.predict(transformed, batchPerThread = param.partitionNum)
+        val predictSet = model.predict(transformed,
+          batchPerThread = param.partitionNum)
         // Print result
-        predictSet.toLocal().array.map(_.getPredict).take(5).asInstanceOf[Tensor[Float]].toArray()
-      }
+        predictSet.toLocal().array.map(_.getPredict)
+          .head.asInstanceOf[Tensor[Float]].toArray()
+        // Top 5 is not suit for console print
+//        predictSet.toLocal().array.map(_.getPredict)
+//          .take(5).asInstanceOf[Array[Tensor[Float]]].map(_.toArray()).toSeq
+      })
+
+      val predicts = lines.as[String].withColumn("Predict",
+        predictTextUDF(col("value")))
 
       val query = predicts.writeStream
-        .outputMode("complete")
+        .outputMode("append")
         .format("console")
         .start()
 

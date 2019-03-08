@@ -7,7 +7,7 @@
     <packaging>jar</packaging>
     <version>0.1.0-SNAPSHOT</version>
 
-    <name>text-classification-inference</name>
+    <name>streaming-text-classification</name>
     <description>simple streaming text classification</description>
 
     <repositories>
