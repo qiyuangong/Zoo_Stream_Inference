@@ -5,6 +5,8 @@ import java.nio.file.Paths
 import com.intel.analytics.zoo.common.{NNContext, Utils}
 import com.intel.analytics.zoo.feature.image.ImageSet
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.opencv.imgcodecs.Imgcodecs
@@ -74,9 +76,24 @@ object StreamingObjectDetection {
   }
 
   def predictImg(path: String, model: ObjectDetector[Float]): Unit = {
-    // TODO Task not serializable
-    val data = ImageSet.read(path, null, 1,
-    imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+    val fspath = new Path(path)
+    val fs = FileSystem.get(fspath.toUri, new Configuration())
+    val data = if (path.contains("hdfs")) {
+      // Read HDFS image
+      val instream= fs.open(fspath)
+      val data = new Array[Byte](fs.getFileStatus(new Path(path))
+        .getLen.toInt)
+      instream.readFully(data)
+      instream.close()
+      ImageSet.array(Array.apply(data),
+        imageCodec =Imgcodecs.CV_LOAD_IMAGE_COLOR)
+    } else {
+      // Read local image
+      ImageSet.read(path, null, 1,
+        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+    }
+    // Read local
+
     val output = model.predictImageSet(data)
     // Print result
     val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
@@ -88,10 +105,20 @@ object StreamingObjectDetection {
 //    })
     val visualized = visualizer(output).toLocal()
     val result = visualized.array
-      result.foreach(x => {
+    result.foreach(x => {
+      if (path.contains("hdfs")) {
+        //Save to HDFS dir
+        val outstream = fs.create(
+          new Path("detection_" + x.uri() + ".jpg"),
+          true)
+        outstream.write(x[Array[Byte]](Visualizer.visualized))
+        outstream.close()
+      } else {
+        // Save to local dir
         Utils.saveBytes(x[Array[Byte]](Visualizer.visualized),
           getOutPath("output", x.uri(), "jpg"), true)
-      })
+      }
+    })
   }
 
   private def getOutPath(outPath: String, uri: String, encoding: String): String = {

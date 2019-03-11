@@ -1,7 +1,10 @@
 package com.intel.analytics.zoo.apps.streaming
 
 import java.io.{File, PrintWriter}
+import java.net.URI
 
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.fs.Path
 import org.apache.log4j.{Level, Logger}
 import scopt.OptionParser
@@ -16,12 +19,28 @@ object ImagePathWriter {
     Logger.getLogger("org").setLevel(Level.WARN)
 
     parser.parse(args, PathWriterParam()).foreach { params =>
-      val lists = new File(params.imageSourcePath).listFiles().map(_.getAbsolutePath)
+      val path = new Path(params.imageSourcePath)
+      val fs = FileSystem.get(path.toUri, new Configuration())
+      val lists = if (params.imageSourcePath.contains("hdfs")) {
+        // HDFS
+        fs.listStatus(path).map(_.getPath.toString)
+      } else {
+        // Local files
+        new File(params.imageSourcePath).listFiles().map(_.getAbsolutePath)
+      }
       lists.grouped(10).zipWithIndex.foreach { case (batch, id) =>
         val batchPath = new Path(params.streamingPath, id + ".txt").toString
-        val pw = new PrintWriter(batchPath)
-        batch.foreach(line => pw.println(line))
-        pw.close()
+        if (params.imageSourcePath.contains("hdfs")) {
+          // Write to HDFS
+          val outstream = fs.create(new Path(batchPath), true)
+          batch.foreach(line => outstream.writeBytes(line + "\n"))
+          outstream.close()
+        } else {
+          // Write to local
+          val pw = new PrintWriter(batchPath)
+          batch.foreach(line => pw.println(line))
+          pw.close()
+        }
         println("wrote " + batchPath)
         Thread.sleep(4000)
       }
