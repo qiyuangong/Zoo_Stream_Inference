@@ -1,10 +1,13 @@
 package com.intel.analytics.zoo.apps.streaming
 
+import java.io.File
 import java.nio.file.Paths
 
+import com.intel.analytics.bigdl.transform.vision.image.ImageFeature
 import com.intel.analytics.zoo.common.{NNContext, Utils}
-import com.intel.analytics.zoo.feature.image.ImageSet
+import com.intel.analytics.zoo.feature.image.{ImageBytesToMat, ImageSet}
 import com.intel.analytics.zoo.models.image.objectdetection.{ObjectDetector, Visualizer}
+import org.apache.commons.io.FileUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.{Level, Logger}
@@ -45,7 +48,7 @@ object StreamingObjectDetection {
   def main(args: Array[String]): Unit = {
     parser.parse(args, PredictParam()).foreach { params =>
       val sc = NNContext.initNNContext("Streaming Object Detection")
-      val ssc = new StreamingContext(sc, Seconds(2))
+      val ssc = new StreamingContext(sc, Seconds(3))
 
       // Load pre-trained model
       val model = ObjectDetector.loadModel[Float](params.modelPath)
@@ -56,17 +59,22 @@ object StreamingObjectDetection {
 //        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
 
       val lines = ssc.textFileStream(params.image)
-      println(lines.toString)
       lines.foreachRDD { batchPath =>
         // Read image files and load to RDD
         println("batchPath partition " + batchPath.getNumPartitions)
         println("batchPath count " + batchPath.count())
         if (!batchPath.isEmpty()) {
           println(batchPath.top(1).apply(0))
-          batchPath.foreach { path =>
-            println("image path " + path)
-            predictImg(path, model)
-          }
+          // RDD[String] => RDD[ImageFeature]
+          val dataset = ImageSet.rdd(batchPath.map(path => readFile(path)))
+          // Resize image
+          dataset -> ImageBytesToMat(imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+          val output = model.predictImageSet(dataset)
+          val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
+          val visualized = visualizer(output).toDistributed()
+          val result = visualized.rdd.map(imageFeature =>
+            (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
+          result.foreach(x => writeFile(params.outputFolder, x._1, x._2))
         }
       }
       ssc.start()
@@ -75,51 +83,44 @@ object StreamingObjectDetection {
     }
   }
 
-  def predictImg(path: String, model: ObjectDetector[Float]): Unit = {
+  def readFile(path: String): ImageFeature = {
+    println("Read image file " + path)
     val fspath = new Path(path)
     val fs = FileSystem.get(fspath.toUri, new Configuration())
-    val data = if (path.contains("hdfs")) {
+    if (path.contains("hdfs")) {
       // Read HDFS image
-      val instream= fs.open(fspath)
+      val instream = fs.open(fspath)
       val data = new Array[Byte](fs.getFileStatus(new Path(path))
         .getLen.toInt)
       instream.readFully(data)
       instream.close()
-      ImageSet.array(Array.apply(data),
-        imageCodec =Imgcodecs.CV_LOAD_IMAGE_COLOR)
+      ImageFeature.apply(data, null, path)
     } else {
       // Read local image
-      ImageSet.read(path, null, 1,
-        imageCodec = Imgcodecs.CV_LOAD_IMAGE_COLOR)
+      ImageFeature(FileUtils.readFileToByteArray(new File(path)), uri = path)
     }
-    // Read local
-
-    val output = model.predictImageSet(data)
-    // Print result
-    val visualizer = Visualizer(model.getConfig.labelMap, encoding = "jpg")
-//    val visualized = visualizer(output).toDistributed()
-//    val result = visualized.rdd.map(imageFeature =>
-//    (imageFeature.uri(), imageFeature[Array[Byte]](Visualizer.visualized))).collect()
-//    result.foreach(x => {
-//      Utils.saveBytes(x._2, getOutPath("output", x._1, "jpg"), true)
-//    })
-    val visualized = visualizer(output).toLocal()
-    val result = visualized.array
-    result.foreach(x => {
-      if (path.contains("hdfs")) {
-        //Save to HDFS dir
-        val outstream = fs.create(
-          new Path("detection_" + x.uri() + ".jpg"),
-          true)
-        outstream.write(x[Array[Byte]](Visualizer.visualized))
-        outstream.close()
-      } else {
-        // Save to local dir
-        Utils.saveBytes(x[Array[Byte]](Visualizer.visualized),
-          getOutPath("output", x.uri(), "jpg"), true)
-      }
-    })
   }
+
+  def writeFile(outPath: String, path: String, content: Array[Byte]): Unit = {
+    val finalName = s"detection_${ path.substring(path.lastIndexOf("/") + 1,
+      path.lastIndexOf(".")) }.jpg"
+    val fspath = new Path(outPath, finalName)
+    println("Writing image file " + fspath.toString)
+    val fs = FileSystem.get(fspath.toUri, new Configuration())
+    if (outPath.contains("hdfs")) {
+      //Save to HDFS dir
+      val outstream = fs.create(
+        fspath,
+        true)
+      outstream.write(content)
+      outstream.close()
+    } else {
+      // Save to local dir
+      Utils.saveBytes(content,
+        getOutPath(outPath, path, "jpg"), true)
+    }
+  }
+
 
   private def getOutPath(outPath: String, uri: String, encoding: String): String = {
     Paths.get(outPath,
